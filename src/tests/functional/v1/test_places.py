@@ -35,7 +35,7 @@ class TestPlacesCreateMethod:
 
         mock_response = {
             "city": "City",
-            "countryCode": "AA",
+            "countryCode": "RU",
             "locality": "Location",
         }
         # замена настоящего ответа от API на "заглушку" для тестирования
@@ -44,9 +44,9 @@ class TestPlacesCreateMethod:
 
         # передаваемые данные
         request_body = {
-            "latitude": 12.3456,
-            "longitude": 23.4567,
-            "description": "Описание тестового места",
+            "latitude": 88.8888,
+            "longitude": 88.8888,
+            "description": "Тест",
         }
         # осуществление запроса
         response = await client.post(
@@ -84,3 +84,126 @@ class TestPlacesCreateMethod:
         assert created_data[0].country == mock_response["countryCode"]
         assert created_data[0].city == mock_response["city"]
         assert created_data[0].locality == mock_response["locality"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("event_producer_publish")
+    async def test_get_favorite_list(self, client, session):
+        """
+        Тестирование успешного сценария.
+        :param client: Фикстура клиента для запросов.
+        :param session: Фикстура сессии для работы с БД.
+        :return:
+        """
+
+        # передаваемые данные
+        request_body = {
+            "latitude": 0.0,
+            "longitude": 0.0,
+            "description": "string",
+
+        }
+        # проверка существования записи в базе данных
+        await PlacesRepository(session).create_model(request_body)
+        response = await client.get(
+            await self.get_endpoint(),
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+
+        response_json = response.json()
+        assert "items" in response_json
+        assert isinstance(response_json["items"], list)
+        assert len(response_json["items"]) == 9
+        item = response_json["items"][7]
+        assert isinstance(item["id"], int)
+        assert isinstance(item["created_at"], str)
+        assert isinstance(item["updated_at"], str)
+        assert item["latitude"] == request_body["latitude"]
+        assert item["longitude"] == request_body["longitude"]
+        assert item["description"] == request_body["description"]
+
+        assert "total" in response_json
+        assert isinstance(response_json["total"], int)
+        assert response_json["total"] == 9
+
+        assert "page" in response_json
+        assert isinstance(response_json["page"], int)
+        assert response_json["page"] == 1
+
+        assert "size" in response_json
+        assert isinstance(response_json["size"], int)
+        assert response_json["size"] == 50
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("event_producer_publish")
+    async def test_get_favorite_one(self, client, session):
+        """
+        Тестирование успешного сценария.
+        :param client: Фикстура клиента для запросов.
+        :param session: Фикстура сессии для работы с БД.
+        :return:
+        """
+        mock_response = {
+            "city": "City",
+            "countryCode": "RU",
+            "locality": "Location",
+        }
+
+        # передаваемые данные
+        request_body = {
+            "latitude": 88.8888,
+            "longitude": 88.8888,
+            "description": "Тест",
+            "city": "City",
+            "locality": "Location",
+            "country": "RU",
+        }
+        # проверка существования записи в базе данных
+        created_data = await PlacesRepository(session).create_model(request_body)
+        response = await client.get((await self.get_endpoint()) + f"/{created_data}")
+
+        assert response.status_code == status.HTTP_200_OK
+
+        response_json = response.json()
+        assert "data" in response_json
+        assert isinstance(response_json["data"], dict)
+        item = response_json["data"]
+        assert isinstance(item["id"], int)
+        assert isinstance(item["created_at"], str)
+        assert isinstance(item["updated_at"], str)
+        assert item["latitude"] == request_body["latitude"]
+        assert item["longitude"] == request_body["longitude"]
+        assert item["description"] == request_body["description"]
+        assert item["country"] == mock_response["countryCode"]
+        assert item["city"] == mock_response["city"]
+        assert item["locality"] == mock_response["locality"]
+
+
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("event_producer_publish")
+    async def test_delete_place(self, client, session):
+        """
+        Тестирование успешного сценария.
+        :param client: Фикстура клиента для запросов.
+        :param session: Фикстура сессии для работы с БД.
+        :return:
+        """
+        # передаваемые данные
+        request_body = {
+            "latitude": 88.8888,
+            "longitude": 88.8888,
+            "description": "Тест",
+            "city": "City",
+            "locality": "Location",
+            "country": "RU",
+        }
+        # проверка существования записи в базе данных
+        created_data = await PlacesRepository(session).create_model(request_body)
+
+        response = await client.delete((await self.get_endpoint()) + f"/{created_data}")
+
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+        response = await client.get((await self.get_endpoint()) + f"/{created_data}")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
